@@ -237,16 +237,23 @@ class Application(DrivenApplicationBaseClass):
     duct_stcpr_stpt_name = 'duct_stcpr_stpt'
 
     def __init__(self, *args, a0_no_required_data=10, a1_data_window=0,
-                 a2_local_tz=1, a3_sensitivity="all", warm_up_time=15,
+                 a2_local_tz=1, a3_sensitivity="default", warm_up_time=15,
 
                  stcpr_retuning=0.15, max_duct_stcpr_stpt=2.5,
                  high_sf_thr=95.0,
                  b1_zn_high_damper_thr=90.0,
-                 b2_zn_low_damper_thr=10.0, min_duct_stcpr_stpt=0.2,
+                 b2_zn_low_damper_thr=15.0, min_duct_stcpr_stpt=0.2,
                  b3_hdzn_damper_thr=30.0, low_sf_thr=10.0,
                  b0_stpt_deviation_thr=10.0,
                  b4_stcpr_reset_thr=0.25, **kwargs):
         super().__init__(*args, **kwargs)
+        sensitivity = a3_sensitivity.lower() if a3_sensitivity is not None else None
+        if sensitivity != "custom":
+            b0_stpt_deviation_thr = 10.0
+            b1_zn_high_damper_thr = 90.0
+            b2_zn_low_damper_thr = 15.0
+            b3_hdzn_damper_thr = 30.0
+            b4_stcpr_reset_thr = 0.25
         try:
             self.cur_tz = available_tz[a2_local_tz]
         except:
@@ -263,10 +270,6 @@ class Application(DrivenApplicationBaseClass):
         self.warm_up_flag = True
         self.unit_status = None
         self.analysis  = "Airside_RCx"
-        sensitivity = a3_sensitivity.lower() if a3_sensitivity is not None else None
-
-        if sensitivity not in ["all", "high", "normal", "low"]:
-            sensitivity = None
 
         if self.fan_sp_name is None and self.fan_status_name is None:
             raise Exception("SupplyFanStatus or SupplyFanSpeed are required to verify AHU status.")
@@ -283,48 +286,32 @@ class Application(DrivenApplicationBaseClass):
         analysis = "Airside_RCx"
         stcpr_cname = self.duct_stcpr_stpt_name
 
-        if sensitivity is not None and sensitivity != "custom":
-            # SAT AIRCx Thresholds
-            stpt_deviation_thr = {
-                "low": b0_stpt_deviation_thr * 1.5,
-                "normal": b0_stpt_deviation_thr,
-                "high": b0_stpt_deviation_thr * 0.5
-            }
-            zn_high_damper_thr = {
-                "low": b1_zn_high_damper_thr + 5.0,
-                "normal": b1_zn_high_damper_thr,
-                "high": b1_zn_high_damper_thr - 5.0
-            }
-            zn_low_damper_thr = {
-                "low": b2_zn_low_damper_thr + 5.0,
-                "normal": b2_zn_low_damper_thr,
-                "high": b2_zn_low_damper_thr - 5.0
-            }
-            hdzn_damper_thr = {
-                "low": b3_hdzn_damper_thr - 5.0,
-                "normal": b3_hdzn_damper_thr,
-                "high": b3_hdzn_damper_thr + 5.0
-            }
-            stcpr_reset_thr = {
-                "low": b4_stcpr_reset_thr * 1.5,
-                "normal": b4_stcpr_reset_thr,
-                "high": b4_stcpr_reset_thr * 0.5
-            }
-            if sensitivity != "all":
-                remove_sensitivities = [item for item in ["high", "normal", "low"] if item != sensitivity]
-                if remove_sensitivities:
-                    for remove in remove_sensitivities:
-                        stpt_deviation_thr.pop(remove)
-                        zn_high_damper_thr.pop(remove)
-                        zn_low_damper_thr.pop(remove)
-                        stcpr_reset_thr.pop(remove)
-                        hdzn_damper_thr.pop(remove)
-        else:
-            stpt_deviation_thr = {"normal": b0_stpt_deviation_thr}
-            zn_high_damper_thr = {"normal": b1_zn_high_damper_thr}
-            zn_low_damper_thr = {"normal": b2_zn_low_damper_thr}
-            hdzn_damper_thr = {"normal": b3_hdzn_damper_thr}
-            stcpr_reset_thr = {"normal": b4_stcpr_reset_thr}
+        # SAT AIRCx Thresholds
+        stpt_deviation_thr = {
+            "low": b0_stpt_deviation_thr * 1.5,
+            "normal": b0_stpt_deviation_thr,
+            "high": b0_stpt_deviation_thr * 0.5
+        }
+        zn_high_damper_thr = {
+            "low": b1_zn_high_damper_thr + 5.0,
+            "normal": b1_zn_high_damper_thr,
+            "high": b1_zn_high_damper_thr - 5.0
+        }
+        zn_low_damper_thr = {
+            "low": b2_zn_low_damper_thr + 5.0,
+            "normal": b2_zn_low_damper_thr,
+            "high": b2_zn_low_damper_thr - 5.0
+        }
+        hdzn_damper_thr = {
+            "low": b3_hdzn_damper_thr - 5.0,
+            "normal": b3_hdzn_damper_thr,
+            "high": b3_hdzn_damper_thr + 5.0
+        }
+        stcpr_reset_thr = {
+            "low": b4_stcpr_reset_thr * 0.5,
+            "normal": b4_stcpr_reset_thr,
+            "high": b4_stcpr_reset_thr * 1.5
+        }
 
         global pre_condition_sensitivities
         pre_condition_sensitivities = stpt_deviation_thr.keys()
@@ -350,10 +337,10 @@ class Application(DrivenApplicationBaseClass):
         return {
             'a3_sensitivity':
             ConfigDescriptor(str,
-                             'Sensitivity: values can be all (produces a result for low, normal, and high), '
-                             'low, normal, high, or custom. Setting sensitivity to custom allows you to customize your '
-                             'all threshold values',
-                             value_default="all"),
+                             'Application Configuration: value can be default or custom. '
+                             'Setting to custom allows one to enter customized '
+                             'values for Threshold parameters',
+                             value_default="default"),
             'a0_no_required_data':
             ConfigDescriptor(int,
                              'Number of required data measurements to perform diagnostic',
@@ -369,24 +356,24 @@ class Application(DrivenApplicationBaseClass):
 
             'b0_stpt_deviation_thr':
             ConfigDescriptor(float,
-                             "'Duct Static Pressure Set Point Control Loop Dx' - '"
+                             "Threshold: 'Duct Static Pressure Set Point Control Loop Dx' - '"
                              "the allowable percent deviation from the set point for the duct static pressure",
                              value_default=10.0),
             'b1_zn_high_damper_thr':
             ConfigDescriptor(float,
-                             ("'Low Duct Static Pressure Dx'- zone high damper threshold (%)"),
+                             ("Threshold: 'Low Duct Static Pressure Dx'- zone high damper threshold (%)"),
                              value_default=90.0),
             'b2_zn_low_damper_thr':
             ConfigDescriptor(float,
-                             ("'Low Duct Static Pressure Dx' - zone low damper threshold (%)"),
-                             value_default=10.0),
+                             ("Threshold: 'Low Duct Static Pressure Dx' - zone low damper threshold (%)"),
+                             value_default=15.0),
             'b3_hdzn_damper_thr':
             ConfigDescriptor(float,
-                             "'High Duct Static Pressure Dx' - zone damper threshold (%)",
+                             "Threshold: 'High Duct Static Pressure Dx' - zone damper threshold (%)",
                              value_default=30.0),
             'b4_stcpr_reset_thr':
             ConfigDescriptor(float,
-                             "'No Static Pressure Reset Dx' - the required difference between the minimum and the maximum duct static pressure set point for detection of a duct static pressure set point reset (inch w.g.)",
+                             "Threshold: 'No Static Pressure Reset Dx' - the required difference between the minimum and the maximum duct static pressure set point for detection of a duct static pressure set point reset (in. w.g.)",
                              value_default=0.25)
             }
 
@@ -394,9 +381,9 @@ class Application(DrivenApplicationBaseClass):
     def get_self_descriptor(cls):
         name = 'AIRCx for AHUs: Static Pressure'
         desc = 'AIRCx for AHUs: Static Pressure'
-        note = 'Sensitivity: value can be all, low, normal, high, or custom. ' \
-               'Setting values of all, low, normal, or high will ' \
-               'ignore other threshold values.'
+        note = 'Application Configuration: value can be default or custom. ' \
+               'Setting "Application Configuration" to default will ignore ' \
+               'user input for parameters labeled as "Threshold"'
         return Descriptor(name=name, description=desc, note=note)
 
     @classmethod

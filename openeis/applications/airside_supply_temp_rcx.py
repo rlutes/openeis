@@ -239,13 +239,22 @@ class Application(DrivenApplicationBaseClass):
     def __init__(self, *args,
                  a0_no_required_data=10, a1_data_window=30,
                  warm_up_time=30, a2_local_tz=1,
-                 a3_sensitivity="all", b0_stpt_deviation_thr=10.0,
+                 a3_sensitivity="default", b0_stpt_deviation_thr=10.0,
                  b1_rht_on_thr=10.0, b2_reheat_valve_thr=50.0,
                  b3_percent_reheat_thr=25.0, b4_sat_high_damper_thr=80.0,
-                 b5_percent_damper_thr=50.0, b6_sat_reset_thr=5.0,
+                 b5_percent_damper_thr=60.0, b6_sat_reset_thr=5.0,
                  min_sat_stpt=50.0, sat_retuning=1.0,
                  max_sat_stpt=75.0,**kwargs):
         super().__init__(*args, **kwargs)
+        sensitivity = a3_sensitivity.lower() if a3_sensitivity is not None else None
+        if sensitivity is not None and sensitivity != "custom":
+            b0_stpt_deviation_thr = 10.0
+            b1_rht_on_thr = 10.0
+            b2_reheat_valve_thr = 50.0
+            b3_percent_reheat_thr = 25.0
+            b4_sat_high_damper_thr = 80.0
+            b5_percent_damper_thr = 60.0
+            b6_sat_reset_thr = 5.0
         try:
             self.cur_tz = available_tz[a2_local_tz]
         except:
@@ -265,10 +274,6 @@ class Application(DrivenApplicationBaseClass):
         self.unit_status = None
 
         self.analysis = analysis = "Airside_RCx"
-        sensitivity = a3_sensitivity.lower() if a3_sensitivity is not None else None
-
-        if sensitivity not in ["all", "high", "normal", "low"]:
-            sensitivity = None
 
         if self.fan_sp_name is None and self.fan_status_name is None:
             raise Exception("SupplyFanStatus or SupplyFanSpeed are required to verify AHU status.")
@@ -278,55 +283,37 @@ class Application(DrivenApplicationBaseClass):
         self.data_window = td(minutes=a1_data_window) if a1_data_window != 0 else None
         self.low_sf_thr = 10.0
 
-        if sensitivity is not None and sensitivity != "custom":
-            # SAT AIRCx Thresholds
-            stpt_deviation_thr = {
-                "low": b0_stpt_deviation_thr * 1.5,
-                "normal": b0_stpt_deviation_thr,
-                "high": b0_stpt_deviation_thr * 0.5
-            }
-            percent_reheat_thr = {
-                "low": b3_percent_reheat_thr,
-                "normal": b3_percent_reheat_thr,
-                "high": b3_percent_reheat_thr
-            }
-            percent_damper_thr = {
-                "low": b5_percent_damper_thr + 15.0,
-                "normal": b5_percent_damper_thr,
-                "high": b5_percent_damper_thr - 15.0
-            }
-            reheat_valve_thr = {
-                "low": b2_reheat_valve_thr * 1.5,
-                "normal": b2_reheat_valve_thr,
-                "high": b2_reheat_valve_thr * 0.5
-            }
-            sat_high_damper_thr = {
-                "low": b4_sat_high_damper_thr + 15.0,
-                "normal": b4_sat_high_damper_thr,
-                "high": b4_sat_high_damper_thr - 15.0
-            }
-            sat_reset_thr = {
-                "low": max(b6_sat_reset_thr - 2.0, 0.5),
-                "normal": b6_sat_reset_thr,
-                "high": b6_sat_reset_thr + 2.0
-            }
-            if sensitivity != "all":
-                remove_sensitivities = [item for item in ["high", "normal", "low"] if item != sensitivity]
-                if remove_sensitivities:
-                    for remove in remove_sensitivities:
-                        stpt_deviation_thr.pop(remove)
-                        percent_reheat_thr.pop(remove)
-                        percent_damper_thr.pop(remove)
-                        reheat_valve_thr.pop(remove)
-                        sat_high_damper_thr.pop(remove)
-                        sat_reset_thr.pop(remove)
-        else:
-            stpt_deviation_thr = {"normal": b0_stpt_deviation_thr}
-            percent_reheat_thr = {"normal": b3_percent_reheat_thr}
-            percent_damper_thr = {"normal": b5_percent_damper_thr}
-            reheat_valve_thr = {"normal": b2_reheat_valve_thr}
-            sat_high_damper_thr = {"normal": b4_sat_high_damper_thr}
-            sat_reset_thr = {"normal": b6_sat_reset_thr}
+        # SAT AIRCx Thresholds
+        stpt_deviation_thr = {
+            "low": b0_stpt_deviation_thr * 1.5,
+            "normal": b0_stpt_deviation_thr,
+            "high": b0_stpt_deviation_thr * 0.5
+        }
+        percent_reheat_thr = {
+            "low": b3_percent_reheat_thr,
+            "normal": b3_percent_reheat_thr,
+            "high": b3_percent_reheat_thr
+        }
+        percent_damper_thr = {
+            "low": b5_percent_damper_thr + 15.0,
+            "normal": b5_percent_damper_thr,
+            "high": b5_percent_damper_thr - 15.0
+        }
+        reheat_valve_thr = {
+            "low": b2_reheat_valve_thr * 1.5,
+            "normal": b2_reheat_valve_thr,
+            "high": b2_reheat_valve_thr * 0.5
+        }
+        sat_high_damper_thr = {
+            "low": b4_sat_high_damper_thr + 10.0,
+            "normal": b4_sat_high_damper_thr,
+            "high": b4_sat_high_damper_thr - 10.0
+        }
+        sat_reset_thr = {
+            "low": max(b6_sat_reset_thr - 2.0, 0.5),
+            "normal": b6_sat_reset_thr,
+            "high": b6_sat_reset_thr + 2.0
+        }
 
         global pre_condition_sensitivities
         pre_condition_sensitivities = stpt_deviation_thr.keys()
@@ -363,10 +350,10 @@ class Application(DrivenApplicationBaseClass):
                               value_default=1),
             'a3_sensitivity':
             ConfigDescriptor(str,
-                             'Sensitivity: values can be all (produces a result for low, normal, and high), '
-                             'low, normal, high, or custom. Setting sensitivity to custom allows you to customize your '
-                             'all threshold values',
-                             value_default="all"),
+                             'Application Configuration: value can be default or custom. '
+                             'Setting to custom allows one to enter customized '
+                             'values for Threshold parameters',
+                             value_default="default"),
             # 'warm_up_time':
             # ConfigDescriptor(int,
             #                 'When the system starts this much '
@@ -375,34 +362,34 @@ class Application(DrivenApplicationBaseClass):
             #                 value_default=30),
             'b0_stpt_deviation_thr':
             ConfigDescriptor(float,
-                             'Allowable deviation from set points '
+                             'Threshold: Allowable deviation from set points '
                              'before a fault message is generated '
                              '(%)', value_default=10.0),
             'b1_rht_on_thr':
              ConfigDescriptor(float,
-                             'Minimum reheat command for zone reheat to be considered ON (%)',
+                             'Threshold: Minimum reheat command for zone reheat to be considered ON (%)',
                               value_default=10.0),
 
             'b2_reheat_valve_thr':
             ConfigDescriptor(float,
-                             "'Low Supply-air Temperature Dx' – average zone reheat valve command threshold",
+                             "Threshold: 'Low Supply-air Temperature Dx' – average zone reheat valve command threshold",
                              value_default=50.0),
             'b3_percent_reheat_thr':
             ConfigDescriptor(float,
-                             ('Threshold for average percent of zones where terminal box reheat is ON (%)'),
+                             ('Threshold:  For average percent of zones where terminal box reheat is ON (%)'),
                              value_default=25.0),
             'b4_sat_high_damper_thr':
             ConfigDescriptor(float,
-                             "'High Supply-air Temperature Dx' - threshold for determining when zone dampers are commanded to value higher than optimum [high zone damper threshold] (%)",
+                             "Threshold: 'High Supply-air Temperature Dx' - threshold for determining when zone dampers are commanded to value higher than optimum [high zone damper threshold] (%)",
                              value_default=80),
             'b5_percent_damper_thr':
             ConfigDescriptor(float,
-                             "'High Supply-air Temperature Dx' - threshold for determining when the average percent of zones dampers are commanded to value higher than optimum (%)",
-                             value_default=50.0),
+                             "Threshold: 'High Supply-air Temperature Dx' - threshold for determining when the average percent of zones dampers are commanded to value higher than optimum (%)",
+                             value_default=60.0),
             'b6_sat_reset_thr':
             ConfigDescriptor(float,
-                             "'No Supply Temperature Reset Dx' - the required difference between the minimum and the maximum supply-air temperature set point for detection of a supply-air temperature set point reset ({drg}F)".format(drg=DGR_SYM),
-                             value_default=3.0)
+                             "Threshold: 'No Supply Temperature Reset Dx' - the required difference between the minimum and the maximum supply-air temperature set point for detection of a supply-air temperature set point reset ({drg}F)".format(drg=DGR_SYM),
+                             value_default=5.0)
             }
 
     @classmethod
@@ -410,9 +397,9 @@ class Application(DrivenApplicationBaseClass):
         """Name and description for of application for UI"""
         name = 'AIRCx for AHUs: Supply Temperature'
         desc = 'AIRCx for AHUs: Supply Temperature'
-        note = 'Sensitivity: value can be all, low, normal, high, or custom. ' \
-               'Setting values of all, low, normal, or high will ' \
-               'ignore other threshold values.'
+        note = 'Application Configuration: value can be default or custom. ' \
+               'Setting "Application Configuration" to default will ignore ' \
+               'user input for parameters labeled as "Threshold"'
         return Descriptor(name=name, description=desc, note=note)
 
     @classmethod

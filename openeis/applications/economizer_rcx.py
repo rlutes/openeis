@@ -136,23 +136,37 @@ class Application(DrivenApplicationBaseClass):
                  open_damper_time=5, low_supply_fan_threshold=15.0,
                  temp_damper_threshold=90.0,
 
-                 a0_sensitivity="all", a1_local_tz=1,
-                 a2_data_window=30, a3_no_required_data=20, a4_device_type='AHU',
-                 a5_economizer_type='DDB', a6_econ_hl_temp=65.0, a7_temp_deadband=1.0, a8_eer=10.0, a9_rated_cfm=1000.0,
-                 aa_oaf_temperature_threshold=5.0, ab_cooling_enabled_threshold=5.0, ac_constant_volume=0,
+                 a0_sensitivity="default", a1_local_tz=1,
+                 a2_data_window=30, a3_no_required_data=10,
+                 a4_device_type='AHU', a5_economizer_type='DDB',
+                 a6_econ_hl_temp=65.0, a7_temp_deadband=1.0,
+                 a8_eer=10.0, a9_rated_cfm=1000.0,
+                 aa_oaf_temperature_threshold=5.0, ab_cooling_enabled_threshold=5.0,
+                 a_constant_volume=0,
 
                  b0_temp_difference_threshold=4.0, b1_mat_low_threshold=50.0,
                  b2_mat_high_threshold=90.0, b3_rat_low_threshold=50.0,
                  b4_rat_high_threshold=90.0, b5_oat_low_threshold=30.0,
                  b6_oat_high_threshold=100.0, b7_oat_mat_check=6.0,
 
-                 c0_open_damper_threshold=90.0, c1_oaf_economizing_threshold=25.0,
-                 c2_minimum_damper_setpoint=15.0, c3_excess_damper_threshold=20.0,
-                 c4_desired_oaf=10.0, c5_excess_oaf_threshold=20.0,
-                 d1_ventilation_oaf_threshold=5.0,
+                 c2_minimum_damper_setpoint=15.0,
+                 c4_desired_oaf=10.0,
                  **kwargs):
         # initialize user configurable parameters.
         super().__init__(*args, **kwargs)
+        if a0_sensitivity is not None and a0_sensitivity != "custom":
+            aa_oaf_temperature_threshold = 5.0
+            ab_cooling_enabled_threshold = 5.0
+            b0_temp_difference_threshold = 4.0
+            b1_mat_low_threshold = 50.0
+            b2_mat_high_threshold = 90.0
+            b3_rat_low_threshold = 50.0
+            b4_rat_high_threshold = 90.0
+            b5_oat_low_threshold = 30.0
+            b6_oat_high_threshold = 100.0
+            b7_oat_mat_check = 6.0
+            c2_minimum_damper_setpoint = 15.0
+            c4_desired_oaf = 10.0
         # OpenEIS Spefic parameters
         self.default_building_name_used = False
         try:
@@ -195,7 +209,7 @@ class Application(DrivenApplicationBaseClass):
         # diagnostic threshold parameters
         self.economizer_type = a5_economizer_type.lower()
         self.econ_hl_temp = float(a6_econ_hl_temp) if self.economizer_type == "hl" else None
-        self.constant_volume = ac_constant_volume
+        self.constant_volume = a_constant_volume
 
         self.cooling_enabled_threshold = ab_cooling_enabled_threshold
         self.low_supply_fan_threshold = low_supply_fan_threshold
@@ -207,69 +221,41 @@ class Application(DrivenApplicationBaseClass):
         cfm = float(a9_rated_cfm)
         eer = float(a8_eer)
 
-        if a0_sensitivity is not None and a0_sensitivity != "custom":
-            temp_difference_threshold = {
-                'low': max(b0_temp_difference_threshold + 2.0, 6.0),
-                'normal': max(b0_temp_difference_threshold, 4.0),
-                'high': max(b0_temp_difference_threshold - 2.0, 2.0)
-            }
-            oat_mat_check = {
-                'low': b7_oat_mat_check * 1.5,
-                'normal': b7_oat_mat_check,
-                'high': b7_oat_mat_check * 0.5
-            }
-            oaf_economizing_threshold = {
-                'low': 90.0 - 3.0 * c2_minimum_damper_setpoint,
-                'normal': 90.0 - 2.0 * c2_minimum_damper_setpoint,
-                'high': 90.0 - c2_minimum_damper_setpoint
-            }
-            open_damper_threshold = {
-                'low': max(c2_minimum_damper_setpoint * 0.5, 10.0),
-                'normal': max(c2_minimum_damper_setpoint, 20.0),
-                'high': max(c2_minimum_damper_setpoint * 2.0, 40.0)
-            }
-            excess_damper_threshold = {
-                'low': c2_minimum_damper_setpoint * 2.0,
-                'normal': c2_minimum_damper_setpoint,
-                'high': c2_minimum_damper_setpoint * 0.5
-            }
-            excess_oaf_threshold = {
-                'low': c2_minimum_damper_setpoint * 2.0 + 10.0,
-                'normal': c2_minimum_damper_setpoint + 10.0,
-                'high': c2_minimum_damper_setpoint * 0.5 + 10.0
-            }
-            ventilation_oaf_threshold = {
-                'low': c4_desired_oaf * 0.75,
-                'normal': c4_desired_oaf * 0.5,
-                'high': c4_desired_oaf * 0.25
-            }
-            if a0_sensitivity != "all":
-                remove_sensitivities = [item for item in ['high', 'normal', 'low'] if item != a0_sensitivity]
-                if remove_sensitivities:
-                    for remove in remove_sensitivities:
-                        temp_difference_threshold.pop(remove)
-                        oat_mat_check.pop(remove)
-                        oaf_economizing_threshold.pop(remove)
-                        open_damper_threshold.pop(remove)
-                        excess_damper_threshold.pop(remove)
-                        excess_oaf_threshold.pop(remove)
-                        ventilation_oaf_threshold.pop(remove)
-        elif a0_sensitivity == "custom":
-            temp_difference_threshold = {'normal': b0_temp_difference_threshold}
-            oat_mat_check = {'normal': b7_oat_mat_check}
-            oaf_economizing_threshold = {'normal': c1_oaf_economizing_threshold}
-            open_damper_threshold = {'normal': c0_open_damper_threshold}
-            excess_damper_threshold = {'normal': c3_excess_damper_threshold}
-            excess_oaf_threshold = {'normal': c5_excess_oaf_threshold}
-            ventilation_oaf_threshold = {'normal': d1_ventilation_oaf_threshold}
-        else:
-            temp_difference_threshold = {'normal': b0_temp_difference_threshold}
-            oat_mat_check = {'normal': b7_oat_mat_check}
-            oaf_economizing_threshold = {'normal': 90.0 - 2.0 * c2_minimum_damper_setpoint}
-            open_damper_threshold = {'normal': max(c2_minimum_damper_setpoint, 10.0)}
-            excess_damper_threshold = {'normal': c2_minimum_damper_setpoint}
-            excess_oaf_threshold = {'normal': c2_minimum_damper_setpoint + 10.0}
-            ventilation_oaf_threshold = {'normal': c4_desired_oaf * 0.5}
+        temp_difference_threshold = {
+            'low': max(b0_temp_difference_threshold + 2.0, 6.0),
+            'normal': max(b0_temp_difference_threshold, 4.0),
+            'high': max(b0_temp_difference_threshold - 2.0, 2.0)
+        }
+        oat_mat_check = {
+            'low': b7_oat_mat_check * 1.5,
+            'normal': b7_oat_mat_check,
+            'high': b7_oat_mat_check * 0.5
+        }
+        oaf_economizing_threshold = {
+            'low': 90.0 - 3.0 * c2_minimum_damper_setpoint,
+            'normal': 90.0 - 2.0 * c2_minimum_damper_setpoint,
+            'high': 90.0 - c2_minimum_damper_setpoint
+        }
+        open_damper_threshold = {
+            'low': max(c2_minimum_damper_setpoint * 0.5, 10.0),
+            'normal': max(c2_minimum_damper_setpoint, 20.0),
+            'high': max(c2_minimum_damper_setpoint * 2.0, 40.0)
+        }
+        excess_damper_threshold = {
+            'low': c2_minimum_damper_setpoint * 2.0,
+            'normal': c2_minimum_damper_setpoint,
+            'high': c2_minimum_damper_setpoint * 0.5
+        }
+        excess_oaf_threshold = {
+            'low': c2_minimum_damper_setpoint * 2.0 + 10.0,
+            'normal': c2_minimum_damper_setpoint + 10.0,
+            'high': c2_minimum_damper_setpoint * 0.5 + 10.0
+        }
+        ventilation_oaf_threshold = {
+            'low': c4_desired_oaf * 0.75,
+            'normal': c4_desired_oaf * 0.5,
+            'high': c4_desired_oaf * 0.25
+        }
 
         Application.sensitivities = temp_difference_threshold.keys()
 
@@ -310,10 +296,10 @@ class Application(DrivenApplicationBaseClass):
         return {
             'a0_sensitivity':
             ConfigDescriptor(str,
-                             'Sensitivity: values can be all (produces a result for low, normal, and high), '
-                             'low, normal, high, or custom. Setting sensitivity to custom allows you to enter your '
-                             'own values for all threshold values',
-                              value_default="all"),
+                             'Application Configuration: value can be default or custom. '
+                             'Setting to custom allows one to enter customized '
+                             'values for Threshold parameters',
+                              value_default="default"),
             'a1_local_tz':
             ConfigDescriptor(int,
                             "Integer corresponding to local timezone: [1: 'US/Pacific', 2: 'US/Mountain', 3: 'US/Central', 4: 'US/Eastern']",
@@ -336,7 +322,7 @@ class Application(DrivenApplicationBaseClass):
             ConfigDescriptor(int,
                              'Number of required data measurements to '
                              'perform diagnostic',
-                             value_default=20),
+                             value_default=10),
             'a4_device_type':
             ConfigDescriptor(str,
                             'Device type - RTU or AHU (default is AHU)',
@@ -363,120 +349,84 @@ class Application(DrivenApplicationBaseClass):
             ConfigDescriptor(float,
                              'Rated CFM of supply fan at 100% supply fan speed (CFM)',
                              value_default=1000.0),
-            'aa_oaf_temperature_threshold':
-            ConfigDescriptor(float,
-                             'Required difference between outdoor-air and '
-                             'return-air temperatures for an accurate '
-                             'diagnostic ({drg}F)'.format(drg=dgr_sym),
-                              value_default=5.0),
-            'ab_cooling_enabled_threshold':
-            ConfigDescriptor(float,
-                             'Minimum AHU chilled water valve position for '
-                             'determining if the AHU is in a cooling mode (%)',
-                             value_default=5.0),
-            'ac_constant_volume':
+            'a_constant_volume':
             ConfigDescriptor(int,
                              'Boolen value to indicate if the supply '
                              'fan is runs at a constant speed (does not have '
                              'a variable frequency drive)',
                              value_default=0),
+            'aa_oaf_temperature_threshold':
+            ConfigDescriptor(float,
+                             'Threshold: Required difference between outdoor-air and '
+                             'return-air temperatures for an accurate '
+                             'diagnostic ({drg}F)'.format(drg=dgr_sym),
+                              value_default=5.0),
+            'ab_cooling_enabled_threshold':
+            ConfigDescriptor(float,
+                             'Threshold: Minimum AHU chilled water valve position for '
+                             'determining if the AHU is in a cooling mode (%)',
+                             value_default=5.0),
             'b0_temp_difference_threshold':
             ConfigDescriptor(float,
-                             "'Temperature Sensor Dx' - Threshold for "
+                             "Threshold: 'Temperature Sensor Dx' - Threshold for "
                              "detecting temperature sensor problems "
                              "({drg}F)".format(drg=dgr_sym),
                              value_default=4.0),
             'b1_mat_low_threshold':
             ConfigDescriptor(float,
-                             'Mixed-air temperature sensor low limit ({drg}F)'
+                             'Threshold: Mixed-air temperature sensor low limit ({drg}F)'
                              .format(drg=dgr_sym),
                              value_default=50.0),
             'b2_mat_high_threshold':
             ConfigDescriptor(float,
-                             'Mixed-air temperature sensor high limit ({drg}F)'
+                             'Threshold: Mixed-air temperature sensor high limit ({drg}F)'
                              .format(drg=dgr_sym),
                              value_default=90.0),
             'b3_rat_low_threshold':
             ConfigDescriptor(float,
-                             'Return-air temperature sensor low limit ({drg}F)'
+                             'Threshold: Return-air temperature sensor low limit ({drg}F)'
                              .format(drg=dgr_sym),
                              value_default=50),
             'b4_rat_high_threshold':
             ConfigDescriptor(float,
-                             'Return-air temperature sensor high limit '
+                             'Threshold: Return-air temperature sensor high limit '
                              '({drg}F)'.format(drg=dgr_sym),
                              value_default=90.0),
             'b5_oat_low_threshold':
             ConfigDescriptor(float,
-                             'Outdoor-air temperature sensor low limit '
+                             'Threshold: Outdoor-air temperature sensor low limit '
                              '({drg}F)'.format(drg=dgr_sym),
                              value_default=30.0),
             'b6_oat_high_threshold':
             ConfigDescriptor(float,
-                             'Outdoor-air temperature sensor high limit '
+                             'Threshold: Outdoor-air temperature sensor high limit '
                              '({drg}F)'.format(drg=dgr_sym),
                              value_default=100.0),
             'b7_oat_mat_check':
             ConfigDescriptor(float,
-                             "'Temperature Sensor Dx' - Threshold value for "
+                             "Threshold: 'Temperature Sensor Dx' - Threshold value for "
                              "temperature difference between outdoor-air "
                              "temperature and mixed-air temperature reading "
                              "when the outdoor-air damper is near 100% open "
                              "({drg}F)".format(drg=dgr_sym),
                              value_default=6.0),
-            'c0_open_damper_threshold':
-            ConfigDescriptor(float,
-                             "'Economizing When Unit Should Dx' - Threshold for "
-                             "the outdoor-air damper position when conditions "
-                             "are favorable for economizing – value above which "
-                             "the damper is considered open for economizing (%)",
-                             value_default=75.0),
-            'c1_oaf_economizing_threshold':
-            ConfigDescriptor(float,
-                             "'Economizing When Unit Should Dx' - Value "
-                             "below 100% in which the outdoor-air fraction, "
-                             "as a percent, is considered insufficient for "
-                             "economizing (%)",
-                              value_default=25.0),
             'c2_minimum_damper_setpoint':
             ConfigDescriptor(float,
-                             'Minimum outdoor-air damper set point (%)',
+                             'Threshold: Minimum outdoor-air damper set point (%)',
                              value_default=15.0),
-            'c3_excess_damper_threshold':
-            ConfigDescriptor(float,
-                             "'Economizing When Unit Should Not Dx' - "
-                             "Threshold value above the minimum outdoor-air "
-                             "damper set point at which a fault will be identified "
-                             "- when conditions are not favorable for economizing "
-                             "or the AHU/RTU is not cooling (%)",
-                             value_default=20.0),
             'c4_desired_oaf':
             ConfigDescriptor(float,
-                             'The desired minimum outdoor-air fraction as a percent (%)',
-                             value_default=10.0),
-            'c5_excess_oaf_threshold':
-            ConfigDescriptor(float,
-                             "'Excess Outdoor-air Intake Dx' - Threshold value "
-                             "above the desired minimum outdoor-air fraction as "
-                             "a percent where a fault will be indicated, when "
-                             "AHU/RTU is not economizing (%)",
-                             value_default=30.0),
-            'd1_ventilation_oaf_threshold':
-            ConfigDescriptor(float,
-                             "'Insufficient Outdoor-air Intake Dx' - The "
-                             "value below the desired minimum outdoor-air "
-                             "fraction (percent) where a fault will be "
-                             "identified (%)",
-                             value_default=5.0)
+                             'Threshold: The desired minimum outdoor-air fraction as a percent (%)',
+                             value_default=10.0)
             }
 
     @classmethod
     def get_self_descriptor(cls):
         name = 'AIRCx for Economizer HVAC Systems'
         desc = 'Automated Retro-commisioning Diagnostics for HVAC Economizer Systems'
-        note = 'Sensitivity: value can be all, low, normal, high, or custom. ' \
-               'Setting values of all, low, normal, or high will ' \
-               'ignore other threshold values.'
+        note = 'Application Configuration: value can be default or custom. ' \
+               'Setting "Application Configuration" to default will ignore ' \
+               'user input for parameters labeled as "Threshold"'
         return Descriptor(name=name, description=desc, note=note)
 
     @classmethod
@@ -488,10 +438,14 @@ class Application(DrivenApplicationBaseClass):
         return {
             cls.fan_status_name:
             InputDescriptor('SupplyFanStatus',
-                            'AHU Supply Fan Status (required for Dx)', count_min=0),
+                            'AHU Supply Fan Status '
+                            '(SupplyFanSpeed or SupplyFanStatus required for Dx)',
+                            count_min=0),
             cls.fan_sp_name:
             InputDescriptor('SupplyFanSpeed',
-                            'AHU supply fan speed', count_min=0),
+                            'AHU supply fan speed '
+                            '(SupplyFanSpeed or SupplyFanStatus required for Dx)',
+                            count_min=0),
             cls.oat_name:
             InputDescriptor('OutdoorAirTemperature',
                             'AHU or building outdoor-air temperature',
@@ -502,7 +456,8 @@ class Application(DrivenApplicationBaseClass):
                             count_min=1),
             cls.rat_name:
             InputDescriptor('ReturnAirTemperature',
-                            'AHU return-air temperature', count_min=1),
+                            'AHU return-air temperature',
+                            count_min=1),
             cls.oad_sig_name:
             InputDescriptor('OutdoorDamperSignal',
                             'AHU outdoor-air damper signal (required for Dx)', count_min=0),

@@ -703,10 +703,10 @@
             "default_aggregation": "Any",
             "default_fill": "RepeatPrevious"
         },
-        "CoolingCall/ChilledWaterValvePosition": {
+        "CoolingCall": {
             "data_type": "float",
-            "sensor_type": "CoolingCall/ChilledWaterValvePosition",
-            "sensor_name": "CoolingCall/ChilledWaterValvePosition",
+            "sensor_type": "CoolingCall",
+            "sensor_name": "CoolingCall",
             "unit_type": "dimensionless",
             "default_aggregation": "Any",
             "default_fill": "RepeatPrevious"

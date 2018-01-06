@@ -172,8 +172,12 @@ class Application(DrivenApplicationBaseClass):
             b1_tuesday_sch=['5:30', '18:30'], b2_wednesday_sch=['5:30', '18:30'],
             b3_thursday_sch=['5:30', '18:30'], b4_friday_sch=['5:30', '18:30'],
             b5_saturday_sch=['0:00', '0:00'], b6_sunday_sch=['0:00', '0:00'],
-            a0_sensitivity="all", **kwargs):
+            a0_sensitivity="default", **kwargs):
         super().__init__(*args, **kwargs)
+        sensitivity = a0_sensitivity.lower() if a0_sensitivity is not None else None
+        if sensitivity is not None and sensitivity != "custom":
+            a3_unocc_stcpr_thr = 0.2
+            a2_unocc_time_thr = 30.0
         try:
             self.cur_tz = available_tz[a1_local_tz]
         except:
@@ -181,29 +185,17 @@ class Application(DrivenApplicationBaseClass):
         analysis = "Airside_RCx"
         self.low_sf_thr = 10.0
         no_required_data = int(no_required_data)
-        sensitivity = a0_sensitivity.lower() if a0_sensitivity is not None else None
         self.unit_status = None
-        if sensitivity is not None and sensitivity != "custom":
-            unocc_stcpr_thr = {
-                "low": a3_unocc_stcpr_thr * 1.5,
-                "normal": a3_unocc_stcpr_thr,
-                "high": a3_unocc_stcpr_thr * 0.625
-            }
-            unocc_time_thr = {
-                "low": a2_unocc_time_thr * 1.5,
-                "normal": a2_unocc_time_thr,
-                "high": a2_unocc_time_thr * 0.5
-            }
-
-            if sensitivity != "all":
-                remove_sensitivities = [item for item in ["high", "normal", "low"] if item != sensitivity]
-                if remove_sensitivities:
-                    for remove in remove_sensitivities:
-                        unocc_time_thr.pop(remove)
-                        unocc_stcpr_thr.pop(remove)
-        else:
-            unocc_stcpr_thr = {"normal": a3_unocc_stcpr_thr}
-            unocc_time_thr = {"normal": a2_unocc_time_thr}
+        unocc_stcpr_thr = {
+            "low": a3_unocc_stcpr_thr * 1.5,
+            "normal": a3_unocc_stcpr_thr,
+            "high": a3_unocc_stcpr_thr * 0.625
+        }
+        unocc_time_thr = {
+            "low": a2_unocc_time_thr * 1.5,
+            "normal": a2_unocc_time_thr,
+            "high": a2_unocc_time_thr * 0.5
+        }
 
         global pre_condition_sensitivities
         pre_condition_sensitivities = unocc_stcpr_thr.keys()
@@ -225,10 +217,10 @@ class Application(DrivenApplicationBaseClass):
 
             ('a0_sensitivity',
              ConfigDescriptor(str,
-                              'Sensitivity: values can be all (produces a result for low, normal, and high), '
-                              'low, normal, high, or custom. Setting sensitivity to custom allows you to customize your '
-                              'all threshold values',
-                              value_default="all")),
+                             'Application Configuration: value can be default or custom. '
+                             'Setting to custom allows one to enter customized '
+                             'values for Threshold parameters',
+                              value_default="default")),
             ('a1_local_tz',
              ConfigDescriptor(int,
                               "Integer corresponding to local timezone: [1: 'US/Pacific', 2: 'US/Mountain', 3: 'US/Central', 4: 'US/Eastern']",
@@ -239,7 +231,7 @@ class Application(DrivenApplicationBaseClass):
                              value_default=30.0)),
             ('a3_unocc_stcpr_thr',
             ConfigDescriptor(float,
-                             'Threshold for the AHU average static pressure during unoccupied periods (inch w.g.)',
+                             'Threshold for the AHU average static pressure during unoccupied periods (in. w.g.)',
                              value_default=0.2)),
             ('b0_monday_sch',
             ConfigDescriptor(str,
@@ -279,9 +271,9 @@ class Application(DrivenApplicationBaseClass):
     def get_self_descriptor(cls):
         name = 'AIRCx for AHUs: Operation Schedule'
         desc = 'AIRCx for AHUs: Operation Schedule'
-        note = 'Sensitivity: value can be all, low, normal, high, or custom. ' \
-               'Setting values of all, low, normal, or high will ' \
-               'ignore other threshold values.'
+        note = 'Application Configuration: value can be default or custom. ' \
+               'Setting "Application Configuration" to default will ignore ' \
+               'user input for parameters labeled as "Threshold"'
         return Descriptor(name=name, description=desc, note=note)
 
     @classmethod
