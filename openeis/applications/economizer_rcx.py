@@ -133,40 +133,56 @@ class Application(DrivenApplicationBaseClass):
     #TODO: temp set data_window=1 to test
 
     def __init__(self, *args,
-                 open_damper_time=5, low_supply_fan_threshold=15.0,
-                 temp_damper_threshold=90.0,
+                 open_damper_time=5, low_supply_fan_threshold=15.,
+                 temp_damper_threshold=90.,
 
                  a0_sensitivity="default", a1_local_tz=1,
                  a2_data_window=30, a3_no_required_data=10,
                  a4_device_type='AHU', a5_economizer_type='DDB',
-                 a6_econ_hl_temp=65.0, a7_temp_deadband=1.0,
-                 a8_eer=10.0, a9_rated_cfm=1000.0,
-                 aa_oaf_temperature_threshold=5.0, ab_cooling_enabled_threshold=5.0,
+                 a6_econ_hl_temp=65., a7_temp_deadband=1.,
+                 a8_eer=10., a9_rated_cfm=1000.,
+                 aa_oaf_temperature_threshold=5., ab_cooling_enabled_threshold=5.,
                  a_constant_volume=0,
 
-                 b0_temp_difference_threshold=4.0, b1_mat_low_threshold=50.0,
-                 b2_mat_high_threshold=90.0, b3_rat_low_threshold=50.0,
-                 b4_rat_high_threshold=90.0, b5_oat_low_threshold=30.0,
-                 b6_oat_high_threshold=100.0, b7_oat_mat_check=6.0,
-
-                 c2_minimum_damper_setpoint=15.0,
-                 c4_desired_oaf=10.0,
+                 b0_temp_difference_threshold=4., b1_mat_low_threshold=50.,
+                 b2_mat_high_threshold=90., b3_rat_low_threshold=50.,
+                 b4_rat_high_threshold=90., b5_oat_low_threshold=30.,
+                 b6_oat_high_threshold=100., b7_oat_mat_check=6.,
+                 c0_open_damper_threshold=80.,
+                 c2_minimum_damper_setpoint=20.,
+                 c4_desired_oaf=10.,
                  **kwargs):
         # initialize user configurable parameters.
         super().__init__(*args, **kwargs)
-        if a0_sensitivity is not None and a0_sensitivity != "custom":
-            aa_oaf_temperature_threshold = 5.0
-            ab_cooling_enabled_threshold = 5.0
-            b0_temp_difference_threshold = 4.0
-            b1_mat_low_threshold = 50.0
-            b2_mat_high_threshold = 90.0
-            b3_rat_low_threshold = 50.0
-            b4_rat_high_threshold = 90.0
-            b5_oat_low_threshold = 30.0
-            b6_oat_high_threshold = 100.0
-            b7_oat_mat_check = 6.0
-            c2_minimum_damper_setpoint = 15.0
-            c4_desired_oaf = 10.0
+        if a0_sensitivity is not None and a0_sensitivity == "custom":
+            aa_oaf_temperature_threshold = max(5., min(aa_oaf_temperature_threshold, 15.))
+            ab_cooling_enabled_threshold = max(5., min(ab_cooling_enabled_threshold, 50.))
+            b1_mat_low_threshold = max(40., min(b1_mat_low_threshold, 60.))
+            b2_mat_high_threshold = max(80., min(b2_mat_high_threshold, 90.))
+            b3_rat_low_threshold = max(40., min(b3_rat_low_threshold, 60.))
+            b4_rat_high_threshold = max(80., min(b4_rat_high_threshold, 90.))
+            b5_oat_low_threshold = max(20., min(b5_oat_low_threshold, 40.))
+            b6_oat_high_threshold = max(90., min(b6_oat_high_threshold, 125.))
+            c4_desired_oaf = max(5., min(c4_desired_oaf, 30.))
+            b0_temp_difference_threshold = max(2., min(b0_temp_difference_threshold, 6.))
+            c0_open_damper_threshold = max(60., min(c0_open_damper_threshold, 90.))
+            c2_minimum_damper_setpoint = max(0., min(c2_minimum_damper_setpoint, 50.))
+        else:
+            aa_oaf_temperature_threshold = 5.
+            ab_cooling_enabled_threshold = 5.
+            b0_temp_difference_threshold = 4.
+            b1_mat_low_threshold = 50.
+            b2_mat_high_threshold = 90.
+            b3_rat_low_threshold = 50.
+            b4_rat_high_threshold = 90.
+            b5_oat_low_threshold = 30.
+            b6_oat_high_threshold = 100.
+            c2_minimum_damper_setpoint = 20.
+            c4_desired_oaf = 10.
+
+        a6_econ_hl_temp = max(50., min(a6_econ_hl_temp, 75.))
+        a7_temp_deadband = max(0.5, min(a7_temp_deadband, 10.))
+
         # OpenEIS Spefic parameters
         self.default_building_name_used = False
         try:
@@ -188,9 +204,6 @@ class Application(DrivenApplicationBaseClass):
         # OpenEIS specfic change
         # Application.analysis = analysis = kwargs["analysis_name"]
         Application.analysis = analysis = "EconomizerAIRCx"
-
-        if a0_sensitivity not in ["all", 'high', 'normal', 'low']:
-            a0_sensitivity = None
 
         if self.fan_sp_name is None and self.fan_status_name is None:
             raise Exception("SupplyFanStatus or SupplyFanSpeed are required to verify AHU status.")
@@ -222,29 +235,29 @@ class Application(DrivenApplicationBaseClass):
         eer = float(a8_eer)
 
         temp_difference_threshold = {
-            'low': max(b0_temp_difference_threshold + 2.0, 6.0),
-            'normal': max(b0_temp_difference_threshold, 4.0),
+            'low': b0_temp_difference_threshold + 2.0,
+            'normal': b0_temp_difference_threshold,
             'high': max(b0_temp_difference_threshold - 2.0, 2.0)
         }
         oat_mat_check = {
-            'low': b7_oat_mat_check * 1.5,
-            'normal': b7_oat_mat_check,
-            'high': b7_oat_mat_check * 0.5
+            'low': max(b0_temp_difference_threshold * 2.0, 6.0),
+            'normal': max(b0_temp_difference_threshold * 1.5, 5.0),
+            'high': max(b0_temp_difference_threshold, 4.0)
         }
         oaf_economizing_threshold = {
-            'low': 90.0 - 3.0 * c2_minimum_damper_setpoint,
-            'normal': 90.0 - 2.0 * c2_minimum_damper_setpoint,
-            'high': 90.0 - c2_minimum_damper_setpoint
+            'low': c0_open_damper_threshold - 30.0,
+            'normal': c0_open_damper_threshold - 20.0,
+            'high': c0_open_damper_threshold - 10.0
         }
         open_damper_threshold = {
-            'low': max(c2_minimum_damper_setpoint * 0.5, 10.0),
-            'normal': max(c2_minimum_damper_setpoint, 20.0),
-            'high': max(c2_minimum_damper_setpoint * 2.0, 40.0)
+            'low': c0_open_damper_threshold - 10.0,
+            'normal': c0_open_damper_threshold,
+            'high': c0_open_damper_threshold + 10.0
         }
         excess_damper_threshold = {
             'low': c2_minimum_damper_setpoint * 2.0,
-            'normal': c2_minimum_damper_setpoint,
-            'high': c2_minimum_damper_setpoint * 0.5
+            'normal': c2_minimum_damper_setpoint*1.5,
+            'high': c2_minimum_damper_setpoint * 1.25
         }
         excess_oaf_threshold = {
             'low': c2_minimum_damper_setpoint * 2.0 + 10.0,
@@ -352,7 +365,7 @@ class Application(DrivenApplicationBaseClass):
             'a_constant_volume':
             ConfigDescriptor(int,
                              'Boolen value to indicate if the supply '
-                             'fan is runs at a constant speed (does not have '
+                             'fan runs at a constant speed (does not have '
                              'a variable frequency drive)',
                              value_default=0),
             'aa_oaf_temperature_threshold':
@@ -402,18 +415,17 @@ class Application(DrivenApplicationBaseClass):
                              'Threshold: Outdoor-air temperature sensor high limit '
                              '({drg}F)'.format(drg=dgr_sym),
                              value_default=100.0),
-            'b7_oat_mat_check':
+            'c0_open_damper_threshold':
             ConfigDescriptor(float,
-                             "Threshold: 'Temperature Sensor Dx' - Threshold value for "
-                             "temperature difference between outdoor-air "
-                             "temperature and mixed-air temperature reading "
-                             "when the outdoor-air damper is near 100% open "
-                             "({drg}F)".format(drg=dgr_sym),
-                             value_default=6.0),
+                             "'Economizing When Unit Should Dx' - Threshold for "
+                             "the outdoor-air damper position when conditions "
+                             "are favorable for economizing – value above which "
+                             "the damper is considered open for economizing (%)",
+                             value_default=80.0),
             'c2_minimum_damper_setpoint':
             ConfigDescriptor(float,
                              'Threshold: Minimum outdoor-air damper set point (%)',
-                             value_default=15.0),
+                             value_default=20.0),
             'c4_desired_oaf':
             ConfigDescriptor(float,
                              'Threshold: The desired minimum outdoor-air fraction as a percent (%)',
@@ -1013,12 +1025,12 @@ class TempSensorDx(object):
         avg_oa_ma, avg_ra_ma, avg_ma_oa, avg_ma_ra = self.aggregate_data()
         dx_msg = {}
         color_code_dict = {}
-        for key, value in self.temp_diff_thr.items():
-            if avg_oa_ma > value and avg_ra_ma > value:
+        for key, thr in self.temp_diff_thr.items():
+            if avg_oa_ma > thr and avg_ra_ma > thr:
                 msg = ("{}: MAT is less than OAT and RAT - Sensitivity: {}".format(ECON1, key))
                 color_code = RED
                 result = 1.1
-            elif avg_ma_oa > value and avg_ma_ra > value:
+            elif avg_ma_oa > thr and avg_ma_ra > thr:
                 msg = ("{}: MAT is greater than OAT and RAT - Sensitivity: {}".format(ECON1, key))
                 color_code = RED
                 result = 2.1
@@ -1108,7 +1120,7 @@ class DamperSensorInconsistencyDx(object):
                 color_code_dict = {}
                 for key, threshold in self.oat_mat_check.items():
                     if open_damper_check > threshold:
-                        msg = "{}: The OAT and MAT at 100% OAD - Sensitivity: {}".format(ECON1, key)
+                        msg = "{}: OAT and MAT are inconsistent when OAD is near 100% {}".format(ECON1, key)
                         color_code = RED
                         result = 0.1
                         dx_result.log(msg)
@@ -1233,22 +1245,22 @@ class EconCorrectlyOn(object):
         color_code_dict = {}
         thresholds = zip(self.open_damper_threshold.items(), self.oaf_economizing_threshold.items())
         for (key, damper_thr), (key2, oaf_thr) in thresholds:
-            if avg_damper_signal - self.minimum_damper_setpoint < damper_thr:
+            if avg_damper_signal < damper_thr:
                 msg = "{}: {} - sensitivity: {}".format(ECON2, self.alg_result_messages[0], key)
                 color_code = RED
                 result = 11.1
                 energy = self.energy_impact_calculation()
             else:
-                if 100.0 - avg_oaf <= oaf_thr:
-                    msg = "{}: {} - sensitivity: {}".format(ECON2, self.alg_result_messages[1], key)
-                    color_code = GREEN
-                    result = 10.0
-                    energy = 0.0
-                else:
+                if avg_oaf < oaf_thr:
                     msg = "{}: {} --OAF: {} - sensitivity: {}".format(ECON2, self.alg_result_messages[2], avg_oaf, key)
                     color_code = RED
                     result = 12.1
                     energy = self.energy_impact_calculation()
+                else:
+                    msg = "{}: {} - sensitivity: {}".format(ECON2, self.alg_result_messages[1], key)
+                    color_code = GREEN
+                    result = 10.0
+                    energy = 0.0
             dx_result.log(msg)
             dx_msg.update({key: result})
             energy_impact.update({key: energy})
@@ -1428,7 +1440,7 @@ class EconCorrectlyOff(object):
         energy_impact = {}
         color_code_dict = {}
         for key, threshold in self.excess_damper_threshold.items():
-            if avg_damper - self.min_damper_sp > threshold:
+            if avg_damper > threshold:
                 msg = "{}: {} - sensitivity: {}".format(ECON3, self.alg_result_messages[0], key)
                 color_code = RED
                 result = 21.1
