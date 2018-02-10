@@ -237,24 +237,32 @@ class Application(DrivenApplicationBaseClass):
     sat_stpt_name = 'sat_stpt'
 
     def __init__(self, *args,
-                 a0_no_required_data=10, a1_data_window=30,
-                 warm_up_time=30, a2_local_tz=1,
-                 a3_sensitivity="default", b0_stpt_deviation_thr=10.0,
+                 a0_no_required_data=10, a1_data_window=0,
+                 warm_up_time=15, a2_local_tz=1,
+                 a3_sensitivity="default", b0_stpt_deviation_thr=5.0,
                  b1_rht_on_thr=10.0, b2_reheat_valve_thr=50.0,
                  b3_percent_reheat_thr=25.0, b4_sat_high_damper_thr=80.0,
-                 b5_percent_damper_thr=60.0, b6_sat_reset_thr=5.0,
+                 b5_percent_damper_thr=60.0, b6_sat_reset_thr=2.0,
                  min_sat_stpt=50.0, sat_retuning=1.0,
-                 max_sat_stpt=75.0,**kwargs):
+                 max_sat_stpt=70.0,**kwargs):
         super().__init__(*args, **kwargs)
         sensitivity = a3_sensitivity.lower() if a3_sensitivity is not None else None
-        if sensitivity is not None and sensitivity != "custom":
-            b0_stpt_deviation_thr = 10.0
-            b1_rht_on_thr = 10.0
+        if sensitivity is not None and sensitivity == "custom":
+            b0_stpt_deviation_thr = max(2., min(b0_stpt_deviation_thr, 10.))
+            b3_percent_reheat_thr = max(10., min(b3_percent_reheat_thr, 40.))
+            b5_percent_damper_thr = max(75., min(b5_percent_damper_thr, 45.))
+            b6_sat_reset_thr = max(1.5, min(b6_sat_reset_thr, 5.))
+            sat_high_damper_thr = max(95., min(b4_sat_high_damper_thr, 50.))
+            rht_on_thr = max(5., min(b1_rht_on_thr, 30.))
+        else:
+            b0_stpt_deviation_thr = 5.0
+            rht_on_thr = 10.0
             b2_reheat_valve_thr = 50.0
             b3_percent_reheat_thr = 25.0
-            b4_sat_high_damper_thr = 80.0
+            sat_high_damper_thr = 80.0
             b5_percent_damper_thr = 60.0
-            b6_sat_reset_thr = 5.0
+            b6_sat_reset_thr = 2.0
+
         try:
             self.cur_tz = available_tz[a2_local_tz]
         except:
@@ -304,15 +312,10 @@ class Application(DrivenApplicationBaseClass):
             "normal": b2_reheat_valve_thr,
             "high": b2_reheat_valve_thr * 0.5
         }
-        sat_high_damper_thr = {
-            "low": b4_sat_high_damper_thr + 10.0,
-            "normal": b4_sat_high_damper_thr,
-            "high": b4_sat_high_damper_thr - 10.0
-        }
         sat_reset_thr = {
-            "low": max(b6_sat_reset_thr - 2.0, 0.5),
+            "low": b6_sat_reset_thr - 1.0,
             "normal": b6_sat_reset_thr,
-            "high": b6_sat_reset_thr + 2.0
+            "high": b6_sat_reset_thr + 1.0
         }
 
         global pre_condition_sensitivities
@@ -320,13 +323,13 @@ class Application(DrivenApplicationBaseClass):
 
         self.sat_aircx = SupplyTempAIRCx(no_required_data, self.data_window,
                                          auto_correct_flag, stpt_deviation_thr,
-                                         b1_rht_on_thr, sat_high_damper_thr,
+                                         rht_on_thr, sat_high_damper_thr,
                                          percent_damper_thr, percent_reheat_thr,
                                          min_sat_stpt, sat_retuning,
                                          reheat_valve_thr, max_sat_stpt,
                                          analysis, self.sat_stpt_name)
 
-        self.satr_reset_aircx = SatResetAIRCx(a0_no_required_data, sat_reset_thr, analysis)
+        self.sat_reset_aircx = SatResetAIRCx(a0_no_required_data, sat_reset_thr, analysis)
 
     @classmethod
     def get_config_parameters(cls):
@@ -364,7 +367,7 @@ class Application(DrivenApplicationBaseClass):
             ConfigDescriptor(float,
                              'Threshold: Allowable deviation from set points '
                              'before a fault message is generated '
-                             '(%)', value_default=10.0),
+                             '(%)', value_default=5.0),
             'b1_rht_on_thr':
              ConfigDescriptor(float,
                              'Threshold: Minimum reheat command for zone reheat to be considered ON (%)',
@@ -389,7 +392,7 @@ class Application(DrivenApplicationBaseClass):
             'b6_sat_reset_thr':
             ConfigDescriptor(float,
                              "Threshold: 'No Supply Temperature Reset Dx' - the required difference between the minimum and the maximum supply-air temperature set point for detection of a supply-air temperature set point reset ({drg}F)".format(drg=DGR_SYM),
-                             value_default=5.0)
+                             value_default=2.0)
             }
 
     @classmethod
@@ -551,7 +554,7 @@ class Application(DrivenApplicationBaseClass):
             dx_result.log("Unit is in warm-up. Data will not be analyzed.")
             return dx_result
 
-        dx_result = self.satr_reset_aircx.sat_reset_aircx(cur_time, sat_stpt_data, dx_result)
+        dx_result = self.sat_reset_aircx.sat_reset_aircx(cur_time, sat_stpt_data, dx_result)
         dx_result = self.sat_aircx.sat_aircx(cur_time, sat_data, sat_stpt_data,
                                              zn_rht_data, zn_dmpr_data, dx_result)
         return dx_result
@@ -621,7 +624,7 @@ class SupplyTempAIRCx(object):
         self.sat_array = []
         self.rht_array = []
         self.percent_rht = []
-        self.percent_dmpr = defaultdict(list)
+        self.percent_dmpr = []
         # self.table_key = None
 
         # Common RCx parameters
@@ -656,7 +659,7 @@ class SupplyTempAIRCx(object):
         self.sat_array = []
         self.rht_array = []
         self.percent_rht = []
-        self.percent_dmpr = defaultdict(list)
+        self.percent_dmpr = []
 
     def sat_aircx(self, current_time, sat_data, sat_stpt_data,
                   zone_rht_data, zone_dmpr_data, dx_result):
@@ -678,44 +681,39 @@ class SupplyTempAIRCx(object):
         """
         tot_rht = sum(1. if val > self.rht_on_thr else 0. for val in zone_rht_data)
         count_rht = len(zone_rht_data)
-        tot_dmpr = {}
-        for key, thr in self.high_dmpr_thr.items():
-            tot_dmpr[key] = sum(1. if val > thr else 0. for val in zone_dmpr_data)
+        tot_dmpr = sum(1. if val > self.high_dmpr_thr else 0. for val in zone_dmpr_data)
         count_damper = len(zone_dmpr_data)
-        try:
-            if check_date(current_time, self.timestamp_array):
-                dx_result = pre_conditions(INCONSISTENT_DATE, DX_LIST, self.analysis, current_time, dx_result)
-                self.reinitialize()
-                return dx_result
 
-            run_status = check_run_status(self.timestamp_array, current_time, self.no_req_data, self.data_window)
+        if check_date(current_time, self.timestamp_array):
+            dx_result = pre_conditions(INCONSISTENT_DATE, DX_LIST, self.analysis, current_time, dx_result)
+            self.reinitialize()
 
-            if run_status is None:
-                dx_result.log("{} - Insufficient data to produce a valid diagnostic result.".format(current_time))
-                dx_result = pre_conditions(INSUFFICIENT_DATA, DX_LIST, self.analysis, current_time, dx_result)
-                self.reinitialize()
-                return dx_result
+        run_status = check_run_status(self.timestamp_array, current_time, self.no_req_data, self.data_window)
 
-            if run_status:
-                self.table_key = create_table_key(self.analysis, self.timestamp_array[-1])
-                avg_sat_stpt, dx_table, dx_result = setpoint_control_check(self.sat_stpt_array, self.sat_array,
-                                                                           self.stpt_deviation_thr, SA_TEMP_RCX,
-                                                                           self.dx_offset, self.timestamp_array[-1],
-                                                                           dx_result)
-                # dx_result.insert_table_row(self.table_key, dx_table)
-                dx_result.insert_table_row(self.analysis, dx_table)
-                dx_result = self.low_sat(dx_result, avg_sat_stpt)
-                dx_result = self.high_sat(dx_result, avg_sat_stpt)
-                self.reinitialize()
-            return dx_result
-        finally:
-            self.sat_array.append(mean(sat_data))
-            self.rht_array.append(mean(zone_rht_data))
-            self.sat_stpt_array.append(mean(sat_stpt_data))
-            self.percent_rht.append(tot_rht/count_rht)
-            self.timestamp_array.append(current_time)
-            for key in self.high_dmpr_thr:
-                self.percent_dmpr[key].append(tot_dmpr[key]/count_damper)
+        if run_status is None:
+            dx_result.log("{} - Insufficient data to produce a valid diagnostic result.".format(current_time))
+            dx_result = pre_conditions(INSUFFICIENT_DATA, DX_LIST, self.analysis, current_time, dx_result)
+            self.reinitialize()
+
+        if run_status:
+            self.table_key = create_table_key(self.analysis, self.timestamp_array[-1])
+            avg_sat_stpt, dx_table, dx_result = setpoint_control_check(self.sat_stpt_array, self.sat_array,
+                                                                       self.stpt_deviation_thr, SA_TEMP_RCX,
+                                                                       self.dx_offset, self.timestamp_array[-1],
+                                                                       dx_result)
+            # dx_result.insert_table_row(self.table_key, dx_table)
+            dx_result.insert_table_row(self.analysis, dx_table)
+            dx_result = self.low_sat(dx_result, avg_sat_stpt)
+            dx_result = self.high_sat(dx_result, avg_sat_stpt)
+            self.reinitialize()
+
+        self.sat_array.append(mean(sat_data))
+        self.rht_array.append(mean(zone_rht_data))
+        self.sat_stpt_array.append(mean(sat_stpt_data))
+        self.percent_rht.append(tot_rht/count_rht)
+        self.timestamp_array.append(current_time)
+        self.percent_dmpr.append(tot_dmpr/count_damper)
+        return dx_result
 
     def low_sat(self, dx_result, avg_sat_stpt):
         """
@@ -783,12 +781,12 @@ class SupplyTempAIRCx(object):
         :return:
         """
         avg_zones_rht = mean(self.percent_rht)*100.0
+        avg_zone_dmpr_data = mean(self.percent_dmpr) * 100.0
         thresholds = zip(self.percent_dmpr_thr.items(), self.percent_rht_thr.items())
         diagnostic_msg = {}
         color_code_dict = {}
 
         for (key, percent_dmpr_thr), (key2, percent_rht_thr) in thresholds:
-            avg_zone_dmpr_data = mean(self.percent_dmpr[key]) * 100.0
             if avg_zone_dmpr_data > percent_dmpr_thr and avg_zones_rht < percent_rht_thr:
                 if avg_sat_stpt is None:
                     # Create diagnostic message for fault
@@ -863,26 +861,23 @@ class SatResetAIRCx(object):
         :param dx_result:
         :return:
         """
-        try:
-            sat_run_status = check_run_status(self.timestamp_array, current_time, self.no_req_data,
-                                              run_schedule="daily", minimum_point_array=self.sat_stpt_array)
+        sat_run_status = check_run_status(self.timestamp_array, current_time, self.no_req_data,
+                                          run_schedule="daily", minimum_point_array=self.sat_stpt_array)
 
-            if sat_run_status is None:
-                dx_result.log("{} - Insufficient data to produce - {}".format(current_time, SA_TEMP_RCX3))
-                dx_result = pre_conditions(INSUFFICIENT_DATA, [SA_TEMP_RCX3], self.analysis, current_time, dx_result)
-                self.sat_stpt_array = []
-                self.timestamp_array = []
-            elif sat_run_status:
-                dx_result = self.no_sat_stpt_reset(dx_result)
-                self.sat_stpt_array = []
-                self.timestamp_array = []
+        if sat_run_status is None:
+            dx_result.log("{} - Insufficient data to produce - {}".format(current_time, SA_TEMP_RCX3))
+            dx_result = pre_conditions(INSUFFICIENT_DATA, [SA_TEMP_RCX3], self.analysis, current_time, dx_result)
+            self.sat_stpt_array = []
+            self.timestamp_array = []
+        elif sat_run_status:
+            dx_result = self.no_sat_stpt_reset(dx_result)
+            self.sat_stpt_array = []
+            self.timestamp_array = []
 
-            return dx_result
-
-        finally:
-            self.timestamp_array.append(current_time)
-            if sat_stpt_data:
-                self.sat_stpt_array.append(mean(sat_stpt_data))
+        self.timestamp_array.append(current_time)
+        if sat_stpt_data:
+            self.sat_stpt_array.append(mean(sat_stpt_data))
+        return dx_result
 
     def no_sat_stpt_reset(self, dx_result):
         """

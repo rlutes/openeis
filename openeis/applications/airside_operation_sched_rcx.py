@@ -167,7 +167,7 @@ class Application(DrivenApplicationBaseClass):
     duct_stcpr_name = 'duct_stcpr'
 
     def __init__(
-            self, *args, no_required_data=10, a2_unocc_time_thr=30.0,
+            self, *args, no_required_data=10, a2_unocc_time_thr=40.0,
             a3_unocc_stcpr_thr=0.2, a1_local_tz=1, b0_monday_sch=['5:30', '18:30'],
             b1_tuesday_sch=['5:30', '18:30'], b2_wednesday_sch=['5:30', '18:30'],
             b3_thursday_sch=['5:30', '18:30'], b4_friday_sch=['5:30', '18:30'],
@@ -175,13 +175,18 @@ class Application(DrivenApplicationBaseClass):
             a0_sensitivity="default", **kwargs):
         super().__init__(*args, **kwargs)
         sensitivity = a0_sensitivity.lower() if a0_sensitivity is not None else None
-        if sensitivity is not None and sensitivity != "custom":
+        if sensitivity is not None and sensitivity == "custom":
+            a3_unocc_stcpr_thr = max(0.125, min(a3_unocc_stcpr_thr, 0.3))
+            a2_unocc_time_thr = max(20., min(a3_unocc_stcpr_thr, 60.))
+        else:
             a3_unocc_stcpr_thr = 0.2
-            a2_unocc_time_thr = 30.0
+            a2_unocc_time_thr = 40.
+
         try:
             self.cur_tz = available_tz[a1_local_tz]
         except:
             self.cur_tz = 'UTC'
+
         analysis = "Airside_RCx"
         self.low_sf_thr = 10.0
         no_required_data = int(no_required_data)
@@ -472,28 +477,24 @@ class ScheduleAIRCx(object):
         :return:
         """
         schedule = self.schedule[current_time.weekday()]
-        try:
-            run_status = check_run_status(self.timestamp_array, current_time, self.no_req_data, run_schedule="daily")
+        run_status = check_run_status(self.timestamp_array, current_time, self.no_req_data, run_schedule="daily")
 
-            if run_status is None:
-                # schedule_name = create_table_key(self.analysis, self.timestamp_array[0])
-                dx_result.log("{} - Insufficient data to produce a valid diagnostic result.".format(current_time))
-                dx_result = pre_conditions(INSUFFICIENT_DATA, [SCHED_RCX], self.analysis, current_time, dx_result)
-                self.reinitialize_sched()
-                return dx_result
+        if run_status is None:
+            dx_result.log("{} - Insufficient data to produce a valid diagnostic result.".format(current_time))
+            dx_result = pre_conditions(INSUFFICIENT_DATA, [SCHED_RCX], self.analysis, current_time, dx_result)
+            self.reinitialize_sched()
 
-            if run_status:
-                dx_result = self.unocc_fan_operation(dx_result)
-                self.reinitialize_sched()
+        if run_status:
+            dx_result = self.unocc_fan_operation(dx_result)
+            self.reinitialize_sched()
 
-            return dx_result
+        self.timestamp_array.append(current_time)
+        if current_time.time() < schedule[0] or current_time.time() > schedule[1]:
+            self.stcpr_array.extend(stcpr_data)
+            self.fan_status_array.append((current_time, current_fan_status))
+            self.schedule_time_array.append(current_time)
 
-        finally:
-            self.timestamp_array.append(current_time)
-            if current_time.time() < schedule[0] or current_time.time() > schedule[1]:
-                self.stcpr_array.extend(stcpr_data)
-                self.fan_status_array.append((current_time, current_fan_status))
-                self.schedule_time_array.append(current_time)
+        return dx_result
 
     def unocc_fan_operation(self, dx_result):
         """
@@ -505,10 +506,10 @@ class ScheduleAIRCx(object):
         percent_on = 0
         fan_status_on = [(fan[0].hour, fan[1]) for fan in self.fan_status_array if int(fan[1]) == 1]
         fanstat = [(fan[0].hour, fan[1]) for fan in self.fan_status_array]
-        hourly_counter = []
         thresholds = zip(self.unocc_time_thr.items(), self.unocc_stcpr_thr.items())
         diagnostic_msg = {}
         color_code_dict = {}
+        hourly_counter = []
 
         for counter in range(24):
             fan_on_count = [fan_status_time[1] for fan_status_time in fan_status_on if fan_status_time[0] == counter]
@@ -520,7 +521,7 @@ class ScheduleAIRCx(object):
 
         if self.schedule_time_array:
             if self.fan_status_array:
-                percent_on = (len(fan_status_on)/len(self.fan_status_array)) * 100.0
+                percent_on = len(fan_status_on)/len(self.fan_status_array) * 100.0
             if self.stcpr_array:
                 avg_duct_stcpr = mean(self.stcpr_array)
 
@@ -565,14 +566,10 @@ class ScheduleAIRCx(object):
                         color_code_dict.update({key: RED})
                 dx_table = create_dx_table(str(push_time), SCHED_RCX, diagnostic_msg, color_code_dict)
                 dx_result.insert_table_row(self.analysis, dx_table)
-                # dx_table = {SCHED_RCX + DX:  diagnostic_msg}
-                # table_key = create_table_key(self.analysis, push_time) + utc_offset
-                # dx_result.insert_table_row(table_key, dx_table)
+
         else:
             push_time = self.timestamp_array[0].date()
             dx_table = create_dx_table(str(push_time), SCHED_RCX, diagnostic_msg, color_code_dict)
             dx_result.insert_table_row(self.analysis, dx_table)
-            # table_key = create_table_key(self.analysis, push_time)
-            # dx_result.insert_table_row(table_key, {SCHED_RCX + DX:  diagnostic_msg})
 
         return dx_result

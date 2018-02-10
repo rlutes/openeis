@@ -239,21 +239,27 @@ class Application(DrivenApplicationBaseClass):
     def __init__(self, *args, a0_no_required_data=10, a1_data_window=0,
                  a2_local_tz=1, a3_sensitivity="default", warm_up_time=15,
 
-                 stcpr_retuning=0.15, max_duct_stcpr_stpt=2.5,
-                 high_sf_thr=95.0,
+                 stcpr_retuning=0.15, max_duct_stcpr_stpt=2.5, high_sf_thr=95.0,
                  b1_zn_high_damper_thr=90.0,
-                 b2_zn_low_damper_thr=15.0, min_duct_stcpr_stpt=0.2,
+                 b2_zn_low_damper_thr=25.0, min_duct_stcpr_stpt=0.2,
                  b3_hdzn_damper_thr=30.0, low_sf_thr=10.0,
-                 b0_stpt_deviation_thr=10.0,
+                 b0_stpt_deviation_thr=20.0,
                  b4_stcpr_reset_thr=0.25, **kwargs):
         super().__init__(*args, **kwargs)
         sensitivity = a3_sensitivity.lower() if a3_sensitivity is not None else None
-        if sensitivity != "custom":
-            b0_stpt_deviation_thr = 10.0
+        if sensitivity is not None and sensitivity == "custom":
+            b0_stpt_deviation_thr = max(10., min(b0_stpt_deviation_thr, 30.))
+            b1_zn_high_damper_thr = max(95., min(b1_zn_high_damper_thr, 70.))
+            b2_zn_low_damper_thr = max(0., min(b2_zn_low_damper_thr, 35.))
+            b3_hdzn_damper_thr = max(20., min(b3_hdzn_damper_thr, 50.))
+            b4_stcpr_reset_thr = max(0.5, min(b4_stcpr_reset_thr, 0.1))
+        else:
+            b0_stpt_deviation_thr = 20.0
             b1_zn_high_damper_thr = 90.0
-            b2_zn_low_damper_thr = 15.0
+            b2_zn_low_damper_thr = 25.0
             b3_hdzn_damper_thr = 30.0
             b4_stcpr_reset_thr = 0.25
+
         try:
             self.cur_tz = available_tz[a2_local_tz]
         except:
@@ -269,7 +275,7 @@ class Application(DrivenApplicationBaseClass):
         self.warm_up_start = None
         self.warm_up_flag = True
         self.unit_status = None
-        self.analysis  = "Airside_RCx"
+        self.analysis = "Airside_RCx"
 
         if self.fan_sp_name is None and self.fan_status_name is None:
             raise Exception("SupplyFanStatus or SupplyFanSpeed are required to verify AHU status.")
@@ -303,9 +309,9 @@ class Application(DrivenApplicationBaseClass):
             "high": b2_zn_low_damper_thr - 5.0
         }
         hdzn_damper_thr = {
-            "low": b3_hdzn_damper_thr - 5.0,
+            "low": b3_hdzn_damper_thr - 10.0,
             "normal": b3_hdzn_damper_thr,
-            "high": b3_hdzn_damper_thr + 5.0
+            "high": b3_hdzn_damper_thr + 10.0
         }
         stcpr_reset_thr = {
             "low": b4_stcpr_reset_thr * 0.5,
@@ -358,7 +364,7 @@ class Application(DrivenApplicationBaseClass):
             ConfigDescriptor(float,
                              "Threshold: 'Duct Static Pressure Set Point Control Loop Dx' - '"
                              "the allowable percent deviation from the set point for the duct static pressure",
-                             value_default=10.0),
+                             value_default=20.0),
             'b1_zn_high_damper_thr':
             ConfigDescriptor(float,
                              ("Threshold: 'Low Duct Static Pressure Dx'- zone high damper threshold (%)"),
@@ -366,7 +372,7 @@ class Application(DrivenApplicationBaseClass):
             'b2_zn_low_damper_thr':
             ConfigDescriptor(float,
                              ("Threshold: 'Low Duct Static Pressure Dx' - zone low damper threshold (%)"),
-                             value_default=15.0),
+                             value_default=25.0),
             'b3_hdzn_damper_thr':
             ConfigDescriptor(float,
                              "Threshold: 'High Duct Static Pressure Dx' - zone damper threshold (%)",
@@ -646,38 +652,34 @@ class DuctStaticAIRCx(object):
         :param dx_result:
         :return:
         """
-        try:
-            if check_date(current_time, self.timestamp_array):
-                dx_result = pre_conditions(INCONSISTENT_DATE, DX_LIST, self.analysis, current_time, dx_result)
-                self.reinitialize()
-                return dx_result
+        if check_date(current_time, self.timestamp_array):
+            dx_result = pre_conditions(INCONSISTENT_DATE, DX_LIST, self.analysis, current_time, dx_result)
+            self.reinitialize()
 
-            run_status = check_run_status(self.timestamp_array, current_time, self.no_req_data, self.data_window)
+        run_status = check_run_status(self.timestamp_array, current_time, self.no_req_data, self.data_window)
 
-            if run_status is None:
-                dx_result.log("{} - Insufficient data to produce a valid diagnostic result.".format(current_time))
-                dx_result = pre_conditions(INSUFFICIENT_DATA, DX_LIST, self.analysis, current_time, dx_result)
-                self.reinitialize()
-                return dx_result
+        if run_status is None:
+            dx_result.log("{} - Insufficient data to produce a valid diagnostic result.".format(current_time))
+            dx_result = pre_conditions(INSUFFICIENT_DATA, DX_LIST, self.analysis, current_time, dx_result)
+            self.reinitialize()
 
-            if run_status:
-                self.table_key = create_table_key(self.analysis, self.timestamp_array[-1])
-                avg_stcpr_stpt, dx_table, dx_result = setpoint_control_check(self.stcpr_stpt_array, self.stcpr_array,
-                                                                             self.stpt_deviation_thr, DUCT_STC_RCX,
-                                                                             self.dx_offset, self.timestamp_array[-1],
-                                                                             dx_result)
+        if run_status:
+            self.table_key = create_table_key(self.analysis, self.timestamp_array[-1])
+            avg_stcpr_stpt, dx_table, dx_result = setpoint_control_check(self.stcpr_stpt_array, self.stcpr_array,
+                                                                         self.stpt_deviation_thr, DUCT_STC_RCX,
+                                                                         self.dx_offset, self.timestamp_array[-1],
+                                                                         dx_result)
 
-                # dx_result.insert_table_row(self.table_key, dx_table)
-                dx_result.insert_table_row(self.analysis, dx_table)
-                dx_result = self.low_stcpr_aircx(dx_result, avg_stcpr_stpt, low_sf_cond)
-                dx_result = self.high_stcpr_aircx(dx_result, avg_stcpr_stpt, high_sf_cond)
-                self.reinitialize()
-            return dx_result
-        finally:
-            self.stcpr_stpt_array.append(mean(stcpr_data))
-            self.stcpr_array.append(mean(stcpr_stpt_data))
-            self.zn_dmpr_array.append(mean(zn_dmpr_data))
-            self.timestamp_array.append(current_time)
+            dx_result.insert_table_row(self.analysis, dx_table)
+            dx_result = self.low_stcpr_aircx(dx_result, avg_stcpr_stpt, low_sf_cond)
+            dx_result = self.high_stcpr_aircx(dx_result, avg_stcpr_stpt, high_sf_cond)
+            self.reinitialize()
+
+        self.stcpr_stpt_array.append(mean(stcpr_data))
+        self.stcpr_array.append(mean(stcpr_stpt_data))
+        self.zn_dmpr_array.append(mean(zn_dmpr_data))
+        self.timestamp_array.append(current_time)
+        return dx_result
 
     def low_stcpr_aircx(self, dx_result, avg_stcpr_stpt, low_sf_condition):
         """
